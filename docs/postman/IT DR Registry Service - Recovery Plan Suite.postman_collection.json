@@ -1,0 +1,4810 @@
+{
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Automatically generate standard W3C traceparent (ADR-010) and X-Trace-Id",
+          "function generateHex(len) {",
+          "    let result = '';",
+          "    const chars = '0123456789abcdef';",
+          "    for (let i = 0; i < len; i++) {",
+          "        result += chars.charAt(Math.floor(Math.random() * chars.length));",
+          "    }",
+          "    return result;",
+          "}",
+          "const traceId = generateHex(32);",
+          "const spanId = generateHex(16);",
+          "const traceparent = `00-${traceId}-${spanId}-01`;",
+          "pm.request.headers.upsert({ key: 'traceparent', value: traceparent });",
+          "pm.request.headers.upsert({ key: 'X-Trace-Id', value: traceId });",
+          "pm.environment.set('currentTraceId', traceId);"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "info": {
+    "_exporter_id": "39879181",
+    "_postman_id": "b4c6e8a0-2d4f-4a6b-8c0e-9d1f2a3b4c5d",
+    "description": "Enterprise-grade E2E Postman Suite for the IT DR Registry Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033). Creates a recovery plan (a strategy, a recovery time and a recovery point objective, how often to prove it, a runbook reference), reads and lists it, reports a passed walk through the runbook (which counts as a pass but measures nothing), a passed failover and a later passed full recovery (which measure the objectives), the same exercise again (200, the stored one), a partial exercise with a reason from the fixed list and an old failure reported late, and shows how the plan judges itself when read: NEVER_TESTED, READY, LAST_EXERCISE_FAILED until a later pass clears it, OBJECTIVE_MISSED when the last measured pass was slower than the recovery time (and READY again when the objective is loosened), a paused plan not judged, and a report that arrives late moving nothing forward. It updates the definition, pauses and resumes the plan, lists exercises newest first with filters and a limit, and reads the audit ledger in order. A second folder proves the registry is staff only (a REQUESTER gets 403 ERR-DRR-00403 on every route). A third covers the negative guarantees: validation (blank or long name, missing asset or strategy, objectives and intervals out of range, a backup-restore plan promising to lose nothing, a runbook reference that is a sentence, malformed identifiers, missing tenant or executor), duplicate names (409) on create and on rename, illegal transitions, updating a paused plan, exercises that are inconsistent (a failed or partial one without a reason, a passed one with a reason, a reason that is free text, finishing before the start or in the future, a negative or huge data loss), an exercise for a plan that is not the tenant's, tenant isolation, limits of the exercise list, and the absence of DELETE and of any edit of an exercise, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (drOrganisationId). A plan becoming overdue as time passes is proved by the unit tests of the domain (a plan cannot be backdated); the race of simultaneous reports of one exercise, two people pausing at once and the ledger are proved by the platform smoke (dr-smoke).",
+    "name": "IT DR Registry Service - Recovery Plan Suite",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Health status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Health Check (Aggregated)",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ],
+              "raw": "{{base_url}}/health"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Liveness status is UP or UNKNOWN (no probe contributors registered)', () => pm.expect(['UP', 'UNKNOWN']).to.include(pm.response.json().status));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Liveness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "liveness"
+              ],
+              "raw": "{{base_url}}/health/liveness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Readiness status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Readiness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "readiness"
+              ],
+              "raw": "{{base_url}}/health/readiness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Contains JVM metrics', () => pm.expect(pm.response.text()).to.include('jvm_memory'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Prometheus Metrics",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prometheus"
+              ],
+              "raw": "{{base_url}}/prometheus"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns Swagger UI HTML', () => pm.expect(pm.response.text()).to.include('swagger-ui'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Swagger UI",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger-ui",
+                "index.html"
+              ],
+              "raw": "{{base_url}}/swagger-ui/index.html"
+            }
+          }
+        }
+      ],
+      "name": "00. Infrastructure & Telemetry"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('drOrganisationId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('drUserId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('drOtherTenantId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('drAssetId', pm.variables.replaceIn('{{$guid}}'));",
+                  "const now = Date.now();",
+                  "const minutes = (m) => new Date(now - m * 60 * 1000).toISOString();",
+                  "pm.environment.set('tableStart', minutes(300));",
+                  "pm.environment.set('tableFinish', minutes(280));",
+                  "pm.environment.set('failoverStart', minutes(240));",
+                  "pm.environment.set('failoverFinish', minutes(180));",
+                  "pm.environment.set('partialStart', minutes(120));",
+                  "pm.environment.set('partialFinish', minutes(90));",
+                  "pm.environment.set('passStart', minutes(60));",
+                  "pm.environment.set('passFinish', minutes(20));",
+                  "pm.environment.set('oldStart', minutes(2000));",
+                  "pm.environment.set('oldFinish', minutes(1900));",
+                  "pm.environment.set('slowStart', minutes(400));",
+                  "pm.environment.set('slowFinish', minutes(250));",
+                  "pm.environment.set('backwardsStart', minutes(10));",
+                  "pm.environment.set('backwardsFinish', minutes(20));",
+                  "pm.environment.set('futureStart', minutes(-30));",
+                  "pm.environment.set('futureFinish', minutes(-60));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('ACTIVE, NEVER_TESTED, nothing proven about the objectives, due in 30 days', () => {",
+                  "    pm.expect(json.id).to.not.be.undefined;",
+                  "    pm.expect(json.status).to.eql('ACTIVE');",
+                  "    pm.expect(json.readiness).to.eql('NEVER_TESTED');",
+                  "    pm.expect(json.strategy).to.eql('WARM_STANDBY');",
+                  "    pm.expect(json.runbookRef).to.eql('KB-1042');",
+                  "    pm.expect(json.rtoMet == null).to.be.true;",
+                  "    pm.expect(json.rpoMet == null).to.be.true;",
+                  "    pm.expect(json.lastExerciseAt == null).to.be.true;",
+                  "    pm.expect(new Date(json.nextExerciseDueAt).getTime() - new Date(json.createdAt).getTime()).to.eql(30 * 24 * 3600 * 1000);",
+                  "});",
+                  "pm.environment.set('planId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate a recovery plan (ACTIVE, never exercised yet)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('The plan is the tenant\\'s own', () => {",
+                  "    pm.expect(json.id).to.eql(pm.environment.get('planId'));",
+                  "    pm.expect(json.organisationId).to.eql(pm.environment.get('drOrganisationId'));",
+                  "    pm.expect(json.assetId).to.eql(pm.environment.get('drAssetId'));",
+                  "    pm.expect(json.rtoMinutes).to.eql(120);",
+                  "    pm.expect(json.rpoMinutes).to.eql(30);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Retrieve the plan by ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Only ours', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('planId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. List plans filtered by status, asset and readiness",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ACTIVE"
+                },
+                {
+                  "key": "assetId",
+                  "value": "{{drAssetId}}"
+                },
+                {
+                  "key": "readiness",
+                  "value": "NEVER_TESTED"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/retrieve?status=ACTIVE&assetId={{drAssetId}}&readiness=NEVER_TESTED"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('A fact: 20 minutes, no reason, no data loss said, reported by the reporter', () => {",
+                  "    pm.expect(json.kind).to.eql('TABLETOP');",
+                  "    pm.expect(json.outcome).to.eql('SUCCEEDED');",
+                  "    pm.expect(json.durationMinutes).to.eql(20);",
+                  "    pm.expect(json.failureReason == null).to.be.true;",
+                  "    pm.expect(json.dataLossMinutes == null).to.be.true;",
+                  "    pm.expect(json.reportedBy).to.eql('dr-drill-1');",
+                  "});",
+                  "pm.environment.set('exerciseId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. Report a passed walk through the runbook (201, a new exercise)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"TABLETOP\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{tableStart}}\",\n  \"finishedAt\": \"{{tableFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('READY, with the recovery time and point still unknown', () => {",
+                  "    pm.expect(json.readiness).to.eql('READY');",
+                  "    pm.expect(json.rtoMet == null).to.be.true;",
+                  "    pm.expect(json.rpoMet == null).to.be.true;",
+                  "    pm.expect(json.lastOutcome).to.eql('SUCCEEDED');",
+                  "    pm.expect(new Date(json.lastPassedAt).getTime()).to.eql(new Date(pm.environment.get('tableFinish')).getTime());",
+                  "    pm.expect(json.lastMeasuredAt == null).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. A tabletop makes the plan READY but measures nothing",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('It is the same exercise', () => pm.expect(json.id).to.eql(pm.environment.get('exerciseId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Report the same exercise again (200, the stored one, nothing new)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"TABLETOP\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{tableStart}}\",\n  \"finishedAt\": \"{{tableFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('A fact: 60 minutes, 10 minutes of data lost', () => {",
+                  "    pm.expect(json.kind).to.eql('FAILOVER');",
+                  "    pm.expect(json.durationMinutes).to.eql(60);",
+                  "    pm.expect(json.dataLossMinutes).to.eql(10);",
+                  "});",
+                  "pm.environment.set('failoverId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Report a passed failover that lost 10 minutes of data (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{failoverStart}}\",\n  \"finishedAt\": \"{{failoverFinish}}\",\n  \"dataLossMinutes\": 10\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('READY, 60 against 120 minutes and 10 against 30', () => {",
+                  "    pm.expect(json.readiness).to.eql('READY');",
+                  "    pm.expect(json.rtoMet).to.eql(true);",
+                  "    pm.expect(json.rpoMet).to.eql(true);",
+                  "    pm.expect(json.lastMeasuredMinutes).to.eql(60);",
+                  "    pm.expect(json.lastMeasuredDataLossMinutes).to.eql(10);",
+                  "    pm.expect(new Date(json.lastMeasuredAt).getTime()).to.eql(new Date(pm.environment.get('failoverFinish')).getTime());",
+                  "    pm.expect(new Date(json.nextExerciseDueAt).getTime()).to.eql(new Date(pm.environment.get('failoverFinish')).getTime() + 30 * 24 * 3600 * 1000);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. A failover measures the objectives, and both are met",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('PARTIAL with a reason from the fixed list', () => {",
+                  "    pm.expect(json.outcome).to.eql('PARTIAL');",
+                  "    pm.expect(json.failureReason).to.eql('DEPENDENCY_MISSING');",
+                  "});",
+                  "pm.environment.set('partialId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Report a partial full recovery with its reason (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FULL_RECOVERY\",\n  \"outcome\": \"PARTIAL\",\n  \"startedAt\": \"{{partialStart}}\",\n  \"finishedAt\": \"{{partialFinish}}\",\n  \"failureReason\": \"DEPENDENCY_MISSING\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('LAST_EXERCISE_FAILED, the last pass and the last measured pass untouched', () => {",
+                  "    pm.expect(json.readiness).to.eql('LAST_EXERCISE_FAILED');",
+                  "    pm.expect(json.lastOutcome).to.eql('PARTIAL');",
+                  "    pm.expect(new Date(json.lastExerciseAt).getTime()).to.eql(new Date(pm.environment.get('partialFinish')).getTime());",
+                  "    pm.expect(new Date(json.lastPassedAt).getTime()).to.eql(new Date(pm.environment.get('failoverFinish')).getTime());",
+                  "    pm.expect(json.lastMeasuredMinutes).to.eql(60);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. The latest exercise was partial: the plan is not proved, whatever passed before",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('passId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. Report a later passed full recovery (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FULL_RECOVERY\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\",\n  \"dataLossMinutes\": 0\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('READY, 40 minutes and no data lost', () => {",
+                  "    pm.expect(json.readiness).to.eql('READY');",
+                  "    pm.expect(json.lastOutcome).to.eql('SUCCEEDED');",
+                  "    pm.expect(json.lastMeasuredMinutes).to.eql(40);",
+                  "    pm.expect(json.lastMeasuredDataLossMinutes).to.eql(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. A later pass clears the failure, and the measured pass is the newest one",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('oldId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. Report an old failure late (201, it is a fact like any other)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"FAILED\",\n  \"startedAt\": \"{{oldStart}}\",\n  \"finishedAt\": \"{{oldFinish}}\",\n  \"failureReason\": \"TIMEOUT\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Still READY, the last exercise is the newest one, not the last reported', () => {",
+                  "    pm.expect(json.readiness).to.eql('READY');",
+                  "    pm.expect(json.lastOutcome).to.eql('SUCCEEDED');",
+                  "    pm.expect(new Date(json.lastExerciseAt).getTime()).to.eql(new Date(pm.environment.get('passFinish')).getTime());",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. A report that arrives late moves nothing forward",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. Update: a tighter recovery time, the exercises are left alone (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"ACTIVE_ACTIVE\",\n  \"rtoMinutes\": 30,\n  \"rpoMinutes\": 5,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('OBJECTIVE_MISSED, the recovery time missed and the recovery point met', () => {",
+                  "    pm.expect(json.strategy).to.eql('ACTIVE_ACTIVE');",
+                  "    pm.expect(json.readiness).to.eql('OBJECTIVE_MISSED');",
+                  "    pm.expect(json.rtoMet).to.eql(false);",
+                  "    pm.expect(json.rpoMet).to.eql(true);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "16. The same exercises now miss the objective (the last measured pass took 40 minutes against 30)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "17. Update: back to objectives the pass meets (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "18. Control: pause (ACTIVE -> PAUSED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('PAUSED, no due date', () => { pm.expect(json.status).to.eql('PAUSED'); pm.expect(json.readiness).to.eql('PAUSED'); pm.expect(json.nextExerciseDueAt == null).to.be.true; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "19. A paused plan is not judged",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "20. Control: resume (PAUSED -> ACTIVE)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('READY again', () => pm.expect(json.readiness).to.eql('READY'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "21. Judged again",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('The exercise is the tenant\\'s own', () => { pm.expect(json.id).to.eql(pm.environment.get('exerciseId')); pm.expect(json.planId).to.eql(pm.environment.get('planId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "22. Retrieve one exercise by ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "{{exerciseId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/{{exerciseId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Five exercises, newest start first', () => {",
+                  "    pm.expect(json).to.have.lengthOf(5);",
+                  "    const starts = json.map(e => new Date(e.startedAt).getTime());",
+                  "    pm.expect(starts).to.eql([...starts].sort((a, b) => b - a));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "23. List exercises newest start first",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "planId",
+                  "value": "{{planId}}"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?planId={{planId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Only the partial full recovery', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('partialId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "24. List exercises filtered by kind and outcome",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "planId",
+                  "value": "{{planId}}"
+                },
+                {
+                  "key": "kind",
+                  "value": "FULL_RECOVERY"
+                },
+                {
+                  "key": "outcome",
+                  "value": "PARTIAL"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?planId={{planId}}&kind=FULL_RECOVERY&outcome=PARTIAL"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Two', () => pm.expect(pm.response.json()).to.have.lengthOf(2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "25. List exercises with a limit",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "planId",
+                  "value": "{{planId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?planId={{planId}}&limit=2"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Initiated, updated twice, paused, resumed', () => pm.expect(json.map(e => e.action)).to.eql(['INITIATED', 'UPDATED', 'UPDATED', 'PAUSED', 'RESUMED']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "26. The audit ledger keeps every step, in order",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('slowPlanId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "27. A second plan whose only pass was too slow",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Slow plan\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"PILOT_LIGHT\",\n  \"rtoMinutes\": 60,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('150 minutes', () => pm.expect(pm.response.json().durationMinutes).to.eql(150));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "28. Report a passed failover that took 150 minutes (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{slowPlanId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{slowStart}}\",\n  \"finishedAt\": \"{{slowFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('OBJECTIVE_MISSED, 150 against 60 minutes, the recovery point unknown', () => { pm.expect(json.readiness).to.eql('OBJECTIVE_MISSED'); pm.expect(json.rtoMet).to.eql(false); pm.expect(json.rpoMet == null).to.be.true; });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "29. A pass slower than the recovery time misses the objective",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{slowPlanId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{slowPlanId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('The slow plan', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('slowPlanId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "30. List plans filtered by readiness: only the one that missed",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "readiness",
+                  "value": "OBJECTIVE_MISSED"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/retrieve?readiness=OBJECTIVE_MISSED"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('No runbook, a recovery point of zero is allowed for a standby', () => { pm.expect(json.runbookRef == null).to.be.true; pm.expect(json.rpoMinutes).to.eql(0); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "31. A plan without a runbook reference (the field is optional)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No runbook\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"ACTIVE_ACTIVE\",\n  \"rtoMinutes\": 5,\n  \"rpoMinutes\": 0,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        }
+      ],
+      "name": "01. Recovery Plan Lifecycle (BIAN Behavior Qualifiers)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. A REQUESTER cannot create a plan (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nope\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. A REQUESTER cannot read a plan (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. A REQUESTER cannot list plans (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. A REQUESTER cannot update a plan (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nope\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. A REQUESTER cannot pause a plan (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. A REQUESTER cannot read a plan audit trail (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. A REQUESTER cannot report an exercise (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"TABLETOP\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. A REQUESTER cannot read an exercise (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "{{exerciseId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/{{exerciseId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. A REQUESTER cannot list exercises (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{drUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve"
+            }
+          }
+        }
+      ],
+      "name": "02. Staff Only (REQUESTER refused)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate - Blank name (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Initiate - Name over 80 characters (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. Initiate - Missing the asset (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. Initiate - Missing the strategy (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. Initiate - An unknown strategy (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"MAGIC\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Initiate - Recovery time of zero (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 0,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Initiate - Recovery time over a year (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 525601,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. Initiate - A negative recovery point (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": -1,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Initiate - A recovery point over a year (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 525601,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. Initiate - A plan that restores from a backup promising to lose nothing (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"BACKUP_RESTORE\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 0,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. Initiate - An exercise interval of zero (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 0,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. Initiate - An exercise interval over a year (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 366,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. Initiate - A runbook reference that is a sentence (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"restart the database first\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. Initiate - A runbook reference that starts with a dash (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"-oops\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. Initiate - A runbook reference over 64 characters (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "16. Initiate - Malformed asset id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"not-a-uuid\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "17. Initiate - Missing X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"notenant\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "18. Initiate - Malformed X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"badtenant\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "not-a-uuid"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "19. Initiate - Missing X-Executor (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"noexecutor\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "20. Initiate - The same name twice in one tenant (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "21. Initiate - The same name in another tenant is fine (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "22. Update - Rename onto a name that is taken (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{slowPlanId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{slowPlanId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "23. Update - A backup-restore plan promising to lose nothing (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"BACKUP_RESTORE\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 0,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "24. Update - A runbook reference that is a sentence (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"two words\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "25. Resume an ACTIVE plan is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "26. Control: pause, for the next case",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "27. Pause a PAUSED plan is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "28. Update a PAUSED plan is allowed (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders failover\",\n  \"assetId\": \"{{drAssetId}}\",\n  \"strategy\": \"WARM_STANDBY\",\n  \"rtoMinutes\": 120,\n  \"rpoMinutes\": 30,\n  \"testEveryDays\": 30,\n  \"runbookRef\": \"KB-1042\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "29. Control: resume, leaving the plan ACTIVE",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "30. Report an exercise - A failed exercise without a reason (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"FAILED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "31. Report an exercise - A partial exercise without a reason (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"PARTIAL\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "32. Report an exercise - A passed exercise with a reason (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\",\n  \"failureReason\": \"TIMEOUT\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "33. Report an exercise - A reason that is free text (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"FAILED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\",\n  \"failureReason\": \"db01 refused the root password\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34. Report an exercise - An unknown kind (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"GAME_DAY\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "35. Report an exercise - An unknown outcome (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"MAYBE\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "36. Report an exercise - Finishing before it started (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{backwardsStart}}\",\n  \"finishedAt\": \"{{backwardsFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "37. Report an exercise - Finishing in the future (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{futureStart}}\",\n  \"finishedAt\": \"{{futureFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "38. Report an exercise - A negative data loss (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\",\n  \"dataLossMinutes\": -1\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "39. Report an exercise - A data loss over a year (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\",\n  \"dataLossMinutes\": 525601\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "40. Report an exercise - Missing the plan (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "41. Report an exercise - Missing the start (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "42. Report an exercise - A malformed start (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"FAILOVER\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"yesterday\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "43. Report an exercise - A plan that is not the tenant's (404)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"00000000-0000-0000-0000-000000000001\",\n  \"kind\": \"TABLETOP\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "44. Report an exercise - Another tenant's plan answers like a missing one (404)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"planId\": \"{{planId}}\",\n  \"kind\": \"TABLETOP\",\n  \"outcome\": \"SUCCEEDED\",\n  \"startedAt\": \"{{passStart}}\",\n  \"finishedAt\": \"{{passFinish}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "dr-drill-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "45. Retrieve - Non-existent plan (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "46. Retrieve - Malformed UUID path (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "not-a-uuid",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/not-a-uuid/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "47. Retrieve - Another tenant answers like a missing one (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "48. Pause - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "49. Audit trail - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "50. Retrieve an exercise - Non-existent (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-DRR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-DRR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "51. Retrieve an exercise - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "{{exerciseId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/{{exerciseId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('None', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "52. List exercises - Another tenant sees none",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "planId",
+                  "value": "{{planId}}"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?planId={{planId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "53. List exercises - A limit of zero (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?limit=0"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "54. List exercises - A limit over 200 (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "201"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?limit=201"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "55. List plans - Unknown status (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/retrieve?status=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "56. List plans - Unknown readiness (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "readiness",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/retrieve?readiness=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "57. List exercises - Unknown kind (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "kind",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/retrieve?kind=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "58. Delete - There is no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "{{planId}}"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/{{planId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "59. An exercise cannot be edited: no PUT (404 or 405)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "{{exerciseId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/{{exerciseId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "60. Delete an exercise - There is no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{drOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-dr-registry",
+                "v1",
+                "exercise",
+                "{{exerciseId}}"
+              ],
+              "raw": "{{base_url}}/it-dr-registry/v1/exercise/{{exerciseId}}"
+            }
+          }
+        }
+      ],
+      "name": "03. Negative Tests & Guarantees"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8112"
+    }
+  ]
+}
