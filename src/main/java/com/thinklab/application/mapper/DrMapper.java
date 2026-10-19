@@ -22,7 +22,7 @@ public final class DrMapper {
         return new RecoveryPlanResponse(plan.getId(), plan.getOrganisationId(), plan.getName(), plan.getAssetId(), plan.getStrategy().name(), plan.getRtoMinutes(),
                 plan.getRpoMinutes(), plan.getTestEveryDays(), plan.getRunbookRef(), plan.getStatus().name(), judged.readiness().name(), judged.nextExerciseDueAt(),
                 judged.rtoMet(), judged.rpoMet(), plan.getLastExerciseAt(), plan.getLastOutcome() != null ? plan.getLastOutcome().name() : null, plan.getLastPassedAt(),
-                plan.getLastPassedMinutes(), plan.getLastPassedDataLossMinutes(), plan.getCreatedAt(), plan.getUpdatedAt());
+                plan.getLastMeasuredAt(), plan.getLastMeasuredMinutes(), plan.getLastMeasuredDataLossMinutes(), plan.getCreatedAt(), plan.getUpdatedAt());
     }
 
     public static RecoveryExerciseResponse toResponse(RecoveryExercise exercise) {

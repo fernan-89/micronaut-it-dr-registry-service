@@ -27,7 +27,7 @@ class DrMapperTest {
     void plan() {
         Instant passed = NOW.minusSeconds(86400);
         RecoveryPlan plan = RecoveryPlan.reconstitute(UUID.randomUUID(), UUID.randomUUID(), "Orders", UUID.randomUUID(), Strategy.WARM_STANDBY, 120, 30, 30, "KB-1", PlanStatus.ACTIVE,
-                NOW.minusSeconds(86400L * 90), NOW, NOW, Outcome.PARTIAL, passed, 45, 10, List.of());
+                NOW.minusSeconds(86400L * 90), NOW, NOW, Outcome.PARTIAL, passed, passed, 45, 10, List.of());
 
         RecoveryPlanResponse response = DrMapper.toResponse(plan, NOW);
 
@@ -36,8 +36,8 @@ class DrMapperTest {
         assertEquals("LAST_EXERCISE_FAILED", response.readiness());
         assertEquals("PARTIAL", response.lastOutcome());
         assertEquals(passed, response.lastPassedAt());
-        assertEquals(45, response.lastPassedMinutes());
-        assertEquals(10, response.lastPassedDataLossMinutes());
+        assertEquals(45, response.lastMeasuredMinutes());
+        assertEquals(10, response.lastMeasuredDataLossMinutes());
         assertEquals(true, response.rtoMet());
         assertEquals(true, response.rpoMet());
     }

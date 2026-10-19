@@ -32,12 +32,16 @@ class RecoveryPlanTest {
         return RecoveryPlan.createNew(UUID.randomUUID(), org, "Orders failover", asset, Strategy.WARM_STANDBY, 120, 30, 30, "KB-1042", "op");
     }
 
-    /** A plan created 100 days ago whose summary of the exercises is exactly what the test says. */
-    private RecoveryPlan summarised(PlanStatus status, Outcome lastOutcome, Instant lastPassedAt, Integer passedMinutes, Integer passedDataLoss) {
+    /**
+     * A plan created 100 days ago whose summary of the exercises is exactly what the test says: when the last pass was, and what the last measured pass
+     * (a failover or a full recovery) took and lost. A pass with minutes or a loss is a measured one, on the same day.
+     */
+    private RecoveryPlan summarised(PlanStatus status, Outcome lastOutcome, Instant lastPassedAt, Integer measuredMinutes, Integer measuredDataLoss) {
         Instant created = NOW.minus(Duration.ofDays(100));
         Instant lastExercise = lastOutcome == null ? null : NOW.minus(Duration.ofDays(1));
+        Instant measuredAt = measuredMinutes != null || measuredDataLoss != null ? lastPassedAt : null;
         return RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, status, created, created, lastExercise, lastOutcome,
-                lastPassedAt, passedMinutes, passedDataLoss, List.of());
+                lastPassedAt, measuredAt, measuredMinutes, measuredDataLoss, List.of());
     }
 
     private static void rejects(Executable action) {
@@ -63,8 +67,9 @@ class RecoveryPlanTest {
         assertNull(plan.getLastExerciseAt());
         assertNull(plan.getLastOutcome());
         assertNull(plan.getLastPassedAt());
-        assertNull(plan.getLastPassedMinutes());
-        assertNull(plan.getLastPassedDataLossMinutes());
+        assertNull(plan.getLastMeasuredAt());
+        assertNull(plan.getLastMeasuredMinutes());
+        assertNull(plan.getLastMeasuredDataLossMinutes());
         assertEquals(plan.getCreatedAt(), plan.getUpdatedAt());
         assertEquals(1, plan.getAuditTrail().size());
         assertEquals("INITIATED", plan.getAuditTrail().get(0).action());
@@ -131,28 +136,29 @@ class RecoveryPlanTest {
     @DisplayName("reconstitute needs the identity, the name, the asset and the strategy; a missing status, time or trail takes its default")
     void reconstitute() {
         UUID id = UUID.randomUUID();
-        RecoveryPlan bare = RecoveryPlan.reconstitute(id, org, "N", asset, Strategy.ACTIVE_ACTIVE, 5, 0, 7, null, null, null, null, null, null, null, null, null, null);
+        RecoveryPlan bare = RecoveryPlan.reconstitute(id, org, "N", asset, Strategy.ACTIVE_ACTIVE, 5, 0, 7, null, null, null, null, null, null, null, null, null, null, null);
         assertEquals(PlanStatus.ACTIVE, bare.getStatus());
         assertEquals(bare.getCreatedAt(), bare.getUpdatedAt());
         assertEquals(0, bare.getAuditTrail().size());
         Instant created = Instant.parse("2026-01-01T00:00:00Z");
         Instant updated = Instant.parse("2026-02-01T00:00:00Z");
         RecoveryPlan full = RecoveryPlan.reconstitute(id, org, "N", asset, Strategy.PILOT_LIGHT, 60, 10, 14, "KB-1", PlanStatus.PAUSED, created, updated, NOW, Outcome.PARTIAL, NOW,
-                45, 3, List.of(new PlanAuditEntry(created, "INITIATED", "op", null, PlanStatus.ACTIVE, "d")));
+                NOW.minusSeconds(60), 45, 3, List.of(new PlanAuditEntry(created, "INITIATED", "op", null, PlanStatus.ACTIVE, "d")));
         assertEquals(PlanStatus.PAUSED, full.getStatus());
         assertEquals(created, full.getCreatedAt());
         assertEquals(updated, full.getUpdatedAt());
         assertEquals(NOW, full.getLastExerciseAt());
         assertEquals(Outcome.PARTIAL, full.getLastOutcome());
         assertEquals(NOW, full.getLastPassedAt());
-        assertEquals(45, full.getLastPassedMinutes());
-        assertEquals(3, full.getLastPassedDataLossMinutes());
+        assertEquals(NOW.minusSeconds(60), full.getLastMeasuredAt());
+        assertEquals(45, full.getLastMeasuredMinutes());
+        assertEquals(3, full.getLastMeasuredDataLossMinutes());
         assertEquals(1, full.getAuditTrail().size());
-        rejects(() -> RecoveryPlan.reconstitute(null, org, "N", asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null));
-        rejects(() -> RecoveryPlan.reconstitute(id, null, "N", asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null));
-        rejects(() -> RecoveryPlan.reconstitute(id, org, null, asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null));
-        rejects(() -> RecoveryPlan.reconstitute(id, org, "N", null, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null));
-        rejects(() -> RecoveryPlan.reconstitute(id, org, "N", asset, null, 1, 1, 1, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> RecoveryPlan.reconstitute(null, org, "N", asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> RecoveryPlan.reconstitute(id, null, "N", asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> RecoveryPlan.reconstitute(id, org, null, asset, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> RecoveryPlan.reconstitute(id, org, "N", null, Strategy.PILOT_LIGHT, 1, 1, 1, null, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> RecoveryPlan.reconstitute(id, org, "N", asset, null, 1, 1, 1, null, null, null, null, null, null, null, null, null, null, null));
     }
 
     // ------------------------------------------------------------------ Behaviors
@@ -176,7 +182,7 @@ class RecoveryPlanTest {
         assertEquals(0, plan.getRpoMinutes());
         assertEquals(7, plan.getTestEveryDays());
         assertNull(plan.getRunbookRef());
-        assertEquals(50, plan.getLastPassedMinutes());
+        assertEquals(50, plan.getLastMeasuredMinutes());
         assertEquals(Outcome.SUCCEEDED, plan.getLastOutcome());
         assertEquals(PlanStatus.PAUSED, plan.getStatus());
         assertEquals(1, plan.getAuditTrail().size());
@@ -248,7 +254,7 @@ class RecoveryPlanTest {
     void neverExercised() {
         Instant created = NOW.minus(Duration.ofDays(10));
         RecoveryPlan young = RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, PlanStatus.ACTIVE, created, created, null, null,
-                null, null, null, List.of());
+                null, null, null, null, List.of());
         Assessment first = young.assess(NOW);
         assertEquals(Readiness.NEVER_TESTED, first.readiness());
         assertEquals(created.plus(Duration.ofDays(30)), first.nextExerciseDueAt());
@@ -322,6 +328,17 @@ class RecoveryPlanTest {
         assertEquals(Readiness.READY, silent.readiness());
         assertEquals(true, silent.rtoMet());
         assertNull(silent.rpoMet());
+    }
+
+    @Test
+    @DisplayName("a plan proved only by walks through the runbook is READY but says nothing about the objectives: nothing was measured")
+    void tabletopOnly() {
+        Instant passed = NOW.minus(Duration.ofDays(5));
+        Assessment judged = summarised(PlanStatus.ACTIVE, Outcome.SUCCEEDED, passed, null, null).assess(NOW);
+
+        assertEquals(Readiness.READY, judged.readiness());
+        assertNull(judged.rtoMet());
+        assertNull(judged.rpoMet());
     }
 
     @Test

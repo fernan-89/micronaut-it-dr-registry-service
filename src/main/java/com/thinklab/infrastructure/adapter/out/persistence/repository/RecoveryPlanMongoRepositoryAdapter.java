@@ -36,7 +36,7 @@ import java.util.UUID;
 /**
  * MongoDB Reactive Repository Adapter for the RecoveryPlan aggregate, raw reactive-streams driver. Every change is one atomic update guarded by
  * the status loaded (ADR-033) that also appends the audit entry; a name unique per organisation is the atomic backstop of a duplicate. The
- * summary of the reported exercises only ever moves forward in time (a compare on the finish of the last exercise and of the last one that passed), so it does not matter in
+ * summary of the reported exercises only ever moves forward in time (a compare on the finish of the last exercise, of the last one that passed and of the last one that measured a recovery), so it does not matter in
  * which order, or how many times, the reports arrive (ADR-030).
  */
 @Singleton
@@ -51,6 +51,7 @@ public class RecoveryPlanMongoRepositoryAdapter implements RecoveryPlanRepositor
     private static final String FIELD_STATUS = "status";
     private static final String FIELD_LAST_EXERCISE = "lastExerciseAt";
     private static final String FIELD_LAST_PASSED = "lastPassedAt";
+    private static final String FIELD_LAST_MEASURED = "lastMeasuredAt";
 
     private static final CodecRegistry POJO_CODEC_REGISTRY = CodecRegistries.fromRegistries(
             MongoClientSettings.getDefaultCodecRegistry(),
@@ -122,11 +123,17 @@ public class RecoveryPlanMongoRepositoryAdapter implements RecoveryPlanRepositor
         if (!exercise.succeeded()) {
             return last;
         }
-        // The last one that passed, how long the recovery took and how much data it lost, likewise.
+        // The last one that passed, likewise.
         Bson newerPass = Filters.and(owner, Filters.or(Filters.eq(FIELD_LAST_PASSED, null), Filters.lt(FIELD_LAST_PASSED, exercise.getFinishedAt())));
-        Bson passed = Updates.combine(Updates.set(FIELD_LAST_PASSED, exercise.getFinishedAt()), Updates.set("lastPassedMinutes", exercise.durationMinutes()),
-                Updates.set("lastPassedDataLossMinutes", exercise.getDataLossMinutes()));
-        return last.then(Mono.from(getCollection().updateOne(newerPass, passed))).then();
+        Mono<Void> passed = last.then(Mono.from(getCollection().updateOne(newerPass, Updates.set(FIELD_LAST_PASSED, exercise.getFinishedAt()))).then());
+        if (!exercise.measured()) {
+            return passed;
+        }
+        // The last pass that measured a recovery (a failover or a full recovery), how long it took and how much data it lost, likewise.
+        Bson newerMeasure = Filters.and(owner, Filters.or(Filters.eq(FIELD_LAST_MEASURED, null), Filters.lt(FIELD_LAST_MEASURED, exercise.getFinishedAt())));
+        Bson measured = Updates.combine(Updates.set(FIELD_LAST_MEASURED, exercise.getFinishedAt()), Updates.set("lastMeasuredMinutes", exercise.durationMinutes()),
+                Updates.set("lastMeasuredDataLossMinutes", exercise.getDataLossMinutes()));
+        return passed.then(Mono.from(getCollection().updateOne(newerMeasure, measured))).then();
     }
 
     private static Throwable duplicate(MongoWriteException error, RecoveryPlan plan) {

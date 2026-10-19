@@ -65,6 +65,14 @@ class RecoveryExerciseTest {
     }
 
     @Test
+    @DisplayName("only a failover or a full recovery measures a recovery: a walk through the runbook takes as long as the meeting did")
+    void measured() {
+        assertFalse(RecoveryExercise.createNew(id, org, plan, ExerciseKind.TABLETOP, Outcome.SUCCEEDED, start, end, null, null, "tool", now).measured());
+        assertTrue(RecoveryExercise.createNew(id, org, plan, ExerciseKind.FAILOVER, Outcome.SUCCEEDED, start, end, null, null, "tool", now).measured());
+        assertTrue(RecoveryExercise.createNew(id, org, plan, ExerciseKind.FULL_RECOVERY, Outcome.SUCCEEDED, start, end, null, null, "tool", now).measured());
+    }
+
+    @Test
     @DisplayName("how long the recovery took is whole minutes rounded up and never less than one")
     void duration() {
         Instant t = Instant.parse("2026-10-07T10:00:00Z");

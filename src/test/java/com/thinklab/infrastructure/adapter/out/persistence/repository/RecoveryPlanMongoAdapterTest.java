@@ -104,7 +104,7 @@ class RecoveryPlanMongoAdapterTest {
         RecoveryPlan plan = plan();
         Instant at = Instant.parse("2026-10-07T10:00:00Z");
         RecoveryPlan withExercises = RecoveryPlan.reconstitute(plan.getId(), org, plan.getName(), plan.getAssetId(), Strategy.PILOT_LIGHT, 120, 30, 7, "KB-1", PlanStatus.PAUSED, at, at,
-                at, Outcome.PARTIAL, at, 15, 3, plan.getAuditTrail());
+                at, Outcome.PARTIAL, at, at, 15, 3, plan.getAuditTrail());
 
         RecoveryPlanDocument document = RecoveryPlanPersistenceMapper.toDocument(withExercises);
         RecoveryPlan back = RecoveryPlanPersistenceMapper.toDomain(document);
@@ -114,8 +114,9 @@ class RecoveryPlanMongoAdapterTest {
         assertEquals(at, back.getLastExerciseAt());
         assertEquals(Outcome.PARTIAL, back.getLastOutcome());
         assertEquals(at, back.getLastPassedAt());
-        assertEquals(15, back.getLastPassedMinutes());
-        assertEquals(3, back.getLastPassedDataLossMinutes());
+        assertEquals(at, back.getLastMeasuredAt());
+        assertEquals(15, back.getLastMeasuredMinutes());
+        assertEquals(3, back.getLastMeasuredDataLossMinutes());
         assertEquals(7, back.getTestEveryDays());
         assertEquals("KB-1", back.getRunbookRef());
         assertEquals(2, back.getAuditTrail().size());
@@ -148,8 +149,8 @@ class RecoveryPlanMongoAdapterTest {
         assertNull(back.getLastOutcome());
         assertNull(back.getLastExerciseAt());
         assertNull(back.getLastPassedAt());
-        assertNull(back.getLastPassedMinutes());
-        assertNull(back.getLastPassedDataLossMinutes());
+        assertNull(back.getLastMeasuredMinutes());
+        assertNull(back.getLastMeasuredDataLossMinutes());
         assertNull(back.getRunbookRef());
     }
 
@@ -158,15 +159,17 @@ class RecoveryPlanMongoAdapterTest {
     void plainDocument() throws ReflectiveOperationException {
         RecoveryPlanDocument document = new RecoveryPlanDocument();
         document.setRunbookRef(null);
-        document.setLastPassedMinutes(null);
-        document.setLastPassedDataLossMinutes(null);
+        document.setLastMeasuredAt(null);
+        document.setLastMeasuredMinutes(null);
+        document.setLastMeasuredDataLossMinutes(null);
         document.setLastPassedAt(null);
         document.setLastExerciseAt(null);
         document.setTestEveryDays(9);
         document.setAuditTrail(new ArrayList<>());
         assertNull(document.getRunbookRef());
-        assertNull(document.getLastPassedMinutes());
-        assertNull(document.getLastPassedDataLossMinutes());
+        assertNull(document.getLastMeasuredAt());
+        assertNull(document.getLastMeasuredMinutes());
+        assertNull(document.getLastMeasuredDataLossMinutes());
         assertNull(document.getLastPassedAt());
         assertNull(document.getLastExerciseAt());
         assertEquals(9, document.getTestEveryDays());
@@ -248,8 +251,8 @@ class RecoveryPlanMongoAdapterTest {
     }
 
     @Test
-    @DisplayName("a passed exercise also records itself as the last pass, with how long it took and what it lost, only when newer")
-    void recordPassed() {
+    @DisplayName("a passed failover or full recovery records itself as the last pass and as the last measured one, with how long it took and what it lost, only when newer")
+    void recordMeasuredPass() {
         when(collection.updateOne(any(Bson.class), any(Bson.class))).thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)));
         RecoveryPlanMongoRepositoryAdapter adapter = new RecoveryPlanMongoRepositoryAdapter(client, URI);
 
@@ -257,10 +260,28 @@ class RecoveryPlanMongoAdapterTest {
 
         ArgumentCaptor<Bson> filter = ArgumentCaptor.forClass(Bson.class);
         ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
-        verify(collection, times(2)).updateOne(filter.capture(), update.capture());
+        verify(collection, times(3)).updateOne(filter.capture(), update.capture());
         assertFalse(update.getAllValues().get(0).toString().contains("lastPassedAt"));
         assertTrue(filter.getAllValues().get(1).toString().contains("lastPassedAt"));
-        assertTrue(update.getAllValues().get(1).toString().contains("lastPassedMinutes"));
-        assertTrue(update.getAllValues().get(1).toString().contains("lastPassedDataLossMinutes"));
+        assertFalse(update.getAllValues().get(1).toString().contains("lastMeasuredMinutes"));
+        assertTrue(filter.getAllValues().get(2).toString().contains("lastMeasuredAt"));
+        assertTrue(update.getAllValues().get(2).toString().contains("lastMeasuredMinutes"));
+        assertTrue(update.getAllValues().get(2).toString().contains("lastMeasuredDataLossMinutes"));
+    }
+
+    @Test
+    @DisplayName("a passed walk through the runbook counts as a pass but measures no recovery: the last measured pass is left alone")
+    void recordTabletopPass() {
+        when(collection.updateOne(any(Bson.class), any(Bson.class))).thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)));
+        RecoveryPlanMongoRepositoryAdapter adapter = new RecoveryPlanMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.recordExercise(UUID.randomUUID(), org, exercise(ExerciseKind.TABLETOP, Outcome.SUCCEEDED))).verifyComplete();
+
+        ArgumentCaptor<Bson> filter = ArgumentCaptor.forClass(Bson.class);
+        ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
+        verify(collection, times(2)).updateOne(filter.capture(), update.capture());
+        assertTrue(filter.getAllValues().get(1).toString().contains("lastPassedAt"));
+        assertFalse(update.getAllValues().get(0).toString().contains("lastMeasured"));
+        assertFalse(update.getAllValues().get(1).toString().contains("lastMeasured"));
     }
 }

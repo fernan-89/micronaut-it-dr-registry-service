@@ -35,8 +35,9 @@ public class RecoveryPlanDocument {
     private Instant lastExerciseAt;
     private String lastOutcome;
     private Instant lastPassedAt;
-    private Integer lastPassedMinutes;
-    private Integer lastPassedDataLossMinutes;
+    private Instant lastMeasuredAt;
+    private Integer lastMeasuredMinutes;
+    private Integer lastMeasuredDataLossMinutes;
     private List<AuditEntryDocument> auditTrail = new ArrayList<>();
 
     public UUID getId() { return id; }
@@ -69,10 +70,12 @@ public class RecoveryPlanDocument {
     public void setLastOutcome(String lastOutcome) { this.lastOutcome = lastOutcome; }
     public Instant getLastPassedAt() { return lastPassedAt; }
     public void setLastPassedAt(Instant lastPassedAt) { this.lastPassedAt = lastPassedAt; }
-    public Integer getLastPassedMinutes() { return lastPassedMinutes; }
-    public void setLastPassedMinutes(Integer lastPassedMinutes) { this.lastPassedMinutes = lastPassedMinutes; }
-    public Integer getLastPassedDataLossMinutes() { return lastPassedDataLossMinutes; }
-    public void setLastPassedDataLossMinutes(Integer lastPassedDataLossMinutes) { this.lastPassedDataLossMinutes = lastPassedDataLossMinutes; }
+    public Instant getLastMeasuredAt() { return lastMeasuredAt; }
+    public void setLastMeasuredAt(Instant lastMeasuredAt) { this.lastMeasuredAt = lastMeasuredAt; }
+    public Integer getLastMeasuredMinutes() { return lastMeasuredMinutes; }
+    public void setLastMeasuredMinutes(Integer lastMeasuredMinutes) { this.lastMeasuredMinutes = lastMeasuredMinutes; }
+    public Integer getLastMeasuredDataLossMinutes() { return lastMeasuredDataLossMinutes; }
+    public void setLastMeasuredDataLossMinutes(Integer lastMeasuredDataLossMinutes) { this.lastMeasuredDataLossMinutes = lastMeasuredDataLossMinutes; }
     public List<AuditEntryDocument> getAuditTrail() { return auditTrail; }
     public void setAuditTrail(List<AuditEntryDocument> auditTrail) { this.auditTrail = auditTrail; }
 
@@ -111,8 +114,9 @@ public class RecoveryPlanDocument {
             doc.setLastExerciseAt(plan.getLastExerciseAt());
             doc.setLastOutcome(plan.getLastOutcome() != null ? plan.getLastOutcome().name() : null);
             doc.setLastPassedAt(plan.getLastPassedAt());
-            doc.setLastPassedMinutes(plan.getLastPassedMinutes());
-            doc.setLastPassedDataLossMinutes(plan.getLastPassedDataLossMinutes());
+            doc.setLastMeasuredAt(plan.getLastMeasuredAt());
+            doc.setLastMeasuredMinutes(plan.getLastMeasuredMinutes());
+            doc.setLastMeasuredDataLossMinutes(plan.getLastMeasuredDataLossMinutes());
             doc.setAuditTrail(plan.getAuditTrail().stream().map(AuditEntryDocument::fromDomain).collect(Collectors.toCollection(ArrayList::new)));
             return doc;
         }
@@ -120,8 +124,8 @@ public class RecoveryPlanDocument {
         public static RecoveryPlan toDomain(RecoveryPlanDocument doc) {
             return RecoveryPlan.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getName(), doc.getAssetId(), Strategy.valueOf(doc.getStrategy()), doc.getRtoMinutes(),
                     doc.getRpoMinutes(), doc.getTestEveryDays(), doc.getRunbookRef(), PlanStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
-                    doc.getLastExerciseAt(), doc.getLastOutcome() != null ? Outcome.valueOf(doc.getLastOutcome()) : null, doc.getLastPassedAt(), doc.getLastPassedMinutes(),
-                    doc.getLastPassedDataLossMinutes(),
+                    doc.getLastExerciseAt(), doc.getLastOutcome() != null ? Outcome.valueOf(doc.getLastOutcome()) : null, doc.getLastPassedAt(), doc.getLastMeasuredAt(),
+                    doc.getLastMeasuredMinutes(), doc.getLastMeasuredDataLossMinutes(),
                     doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));
         }
     }

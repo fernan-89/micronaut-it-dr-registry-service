@@ -11,4 +11,4 @@ import java.util.UUID;
 public record RecoveryPlanResponse(UUID id, UUID organisationId, String name, UUID assetId, String strategy, int rtoMinutes, int rpoMinutes, int testEveryDays,
                                    @Nullable String runbookRef, String status, String readiness, @Nullable Instant nextExerciseDueAt, @Nullable Boolean rtoMet,
                                    @Nullable Boolean rpoMet, @Nullable Instant lastExerciseAt, @Nullable String lastOutcome, @Nullable Instant lastPassedAt,
-                                   @Nullable Integer lastPassedMinutes, @Nullable Integer lastPassedDataLossMinutes, Instant createdAt, Instant updatedAt) {}
+                                   @Nullable Instant lastMeasuredAt, @Nullable Integer lastMeasuredMinutes, @Nullable Integer lastMeasuredDataLossMinutes, Instant createdAt, Instant updatedAt) {}

@@ -163,7 +163,8 @@ class DrPersistenceIT implements TestPropertyProvider {
         assertEquals(RecoveryExercise.truncate(t2), afterPasses.getLastPassedAt());
         assertEquals(RecoveryExercise.truncate(t2), afterPasses.getLastExerciseAt());
         assertEquals(Outcome.SUCCEEDED, afterPasses.getLastOutcome());
-        assertEquals(10, afterPasses.getLastPassedMinutes());
+        assertEquals(10, afterPasses.getLastMeasuredMinutes());
+        assertEquals(RecoveryExercise.truncate(t2), afterPasses.getLastMeasuredAt());
 
         plans.recordExercise(plan.getId(), organisation, failedLater).block();
         plans.recordExercise(plan.getId(), organisation, older).block();
@@ -172,7 +173,7 @@ class DrPersistenceIT implements TestPropertyProvider {
         assertEquals(RecoveryExercise.truncate(t2.plusSeconds(120)), after.getLastExerciseAt());
         assertEquals(Outcome.FAILED, after.getLastOutcome());
         assertEquals(RecoveryExercise.truncate(t2), after.getLastPassedAt());
-        assertEquals(10, after.getLastPassedMinutes());
+        assertEquals(10, after.getLastMeasuredMinutes());
         assertFalse(after.getLastPassedAt().isAfter(after.getLastExerciseAt()));
     }
 

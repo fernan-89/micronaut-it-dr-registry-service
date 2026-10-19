@@ -65,7 +65,7 @@ class DrRegistryControllerTest {
     }
 
     private RecoveryPlanResponse planResponse() {
-        return new RecoveryPlanResponse(id, tenant, "Nightly", UUID.randomUUID(), "WARM_STANDBY", 120, 30, 30, null, "ACTIVE", "NEVER_TESTED", now, null, null, null, null, null, null, null,
+        return new RecoveryPlanResponse(id, tenant, "Nightly", UUID.randomUUID(), "WARM_STANDBY", 120, 30, 30, null, "ACTIVE", "NEVER_TESTED", now, null, null, null, null, null, null, null, null,
                 now, now);
     }
 

@@ -16,7 +16,7 @@ import java.util.regex.Pattern;
  * is meant to come back ({@link Strategy}), how long it may stay down ({@code rtoMinutes}, the recovery time objective), how much data it may
  * lose ({@code rpoMinutes}, the recovery point objective), how often the plan must be proved by an exercise, and optionally where the runbook
  * is (an identifier, never a sentence). The person or tool that runs an exercise reports it to the registry (ADR-030); the plan keeps only a
- * summary of them (the last exercise and its outcome, the last one that passed and how long it took) and judges itself when read (ADR-031):
+ * summary of them (the last exercise and its outcome, the last one that passed, and the last measured one with how long the recovery took) and judges itself when read (ADR-031):
  * nothing here runs, schedules or reaches anything.
  */
 public class RecoveryPlan {
@@ -43,8 +43,9 @@ public class RecoveryPlan {
     private Instant lastExerciseAt;
     private Outcome lastOutcome;
     private Instant lastPassedAt;
-    private Integer lastPassedMinutes;
-    private Integer lastPassedDataLossMinutes;
+    private Instant lastMeasuredAt;
+    private Integer lastMeasuredMinutes;
+    private Integer lastMeasuredDataLossMinutes;
     private final List<PlanAuditEntry> auditTrail;
 
     private RecoveryPlan(UUID id, UUID organisationId, String name, UUID assetId, Strategy strategy, int rtoMinutes, int rpoMinutes, int testEveryDays, String runbookRef,
@@ -66,8 +67,8 @@ public class RecoveryPlan {
     }
 
     private RecoveryPlan(UUID id, UUID organisationId, String name, UUID assetId, Strategy strategy, int rtoMinutes, int rpoMinutes, int testEveryDays, String runbookRef,
-                         PlanStatus status, Instant createdAt, Instant updatedAt, Instant lastExerciseAt, Outcome lastOutcome, Instant lastPassedAt, Integer lastPassedMinutes,
-                         Integer lastPassedDataLossMinutes, List<PlanAuditEntry> auditTrail) {
+                         PlanStatus status, Instant createdAt, Instant updatedAt, Instant lastExerciseAt, Outcome lastOutcome, Instant lastPassedAt, Instant lastMeasuredAt,
+                         Integer lastMeasuredMinutes, Integer lastMeasuredDataLossMinutes, List<PlanAuditEntry> auditTrail) {
         this.id = id;
         this.organisationId = organisationId;
         this.name = name;
@@ -83,8 +84,9 @@ public class RecoveryPlan {
         this.lastExerciseAt = lastExerciseAt;
         this.lastOutcome = lastOutcome;
         this.lastPassedAt = lastPassedAt;
-        this.lastPassedMinutes = lastPassedMinutes;
-        this.lastPassedDataLossMinutes = lastPassedDataLossMinutes;
+        this.lastMeasuredAt = lastMeasuredAt;
+        this.lastMeasuredMinutes = lastMeasuredMinutes;
+        this.lastMeasuredDataLossMinutes = lastMeasuredDataLossMinutes;
         this.auditTrail = auditTrail != null ? new ArrayList<>(auditTrail) : new ArrayList<>();
     }
 
@@ -100,12 +102,12 @@ public class RecoveryPlan {
 
     public static RecoveryPlan reconstitute(UUID id, UUID organisationId, String name, UUID assetId, Strategy strategy, int rtoMinutes, int rpoMinutes, int testEveryDays,
                                             String runbookRef, PlanStatus status, Instant createdAt, Instant updatedAt, Instant lastExerciseAt, Outcome lastOutcome,
-                                            Instant lastPassedAt, Integer lastPassedMinutes, Integer lastPassedDataLossMinutes, List<PlanAuditEntry> auditTrail) {
+                                            Instant lastPassedAt, Instant lastMeasuredAt, Integer lastMeasuredMinutes, Integer lastMeasuredDataLossMinutes, List<PlanAuditEntry> auditTrail) {
         if (id == null || organisationId == null || name == null || assetId == null || strategy == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Name, Asset ID and Strategy are mandatory to reconstitute a RecoveryPlan.");
         }
         return new RecoveryPlan(id, organisationId, name, assetId, strategy, rtoMinutes, rpoMinutes, testEveryDays, runbookRef, status, createdAt, updatedAt, lastExerciseAt,
-                lastOutcome, lastPassedAt, lastPassedMinutes, lastPassedDataLossMinutes, auditTrail);
+                lastOutcome, lastPassedAt, lastMeasuredAt, lastMeasuredMinutes, lastMeasuredDataLossMinutes, auditTrail);
     }
 
     // --- Domain Behaviors ---
@@ -143,7 +145,7 @@ public class RecoveryPlan {
 
     /**
      * How well the promise holds at that moment (ADR-031), the first of these that applies: a paused plan is not judged; if the latest exercise was
-     * partial or failed the plan is not proved ({@code LAST_EXERCISE_FAILED}); if the last exercise that passed took longer than the recovery time,
+     * partial or failed the plan is not proved ({@code LAST_EXERCISE_FAILED}); if the last measured pass took longer than the recovery time,
      * or lost more data than the recovery point allows, the objective is missed; an exercise is due {@code testEveryDays} after the last one that
      * passed, or after the plan was created, and a plan past that is {@code TEST_OVERDUE}; a plan never exercised is {@code NEVER_TESTED}; else
      * {@code READY}. A later passing exercise clears an earlier failure.
@@ -168,14 +170,14 @@ public class RecoveryPlan {
         return new Assessment(readiness, due, rtoMet, rpoMet);
     }
 
-    /** Did the last exercise that passed recover inside the recovery time objective? Unknown (null) until there is one. */
+    /** Did the last measured pass (a failover or a full recovery) fit in the recovery time objective? Unknown (null) until there is one. */
     private Boolean rtoMet() {
-        return lastPassedMinutes == null ? null : lastPassedMinutes <= rtoMinutes;
+        return lastMeasuredMinutes == null ? null : lastMeasuredMinutes <= rtoMinutes;
     }
 
-    /** Did the last exercise that passed lose no more than the recovery point allows? Unknown (null) until one reported what it lost. */
+    /** Did the last measured pass lose no more than the recovery point allows? Unknown (null) until one reported what it lost. */
     private Boolean rpoMet() {
-        return lastPassedDataLossMinutes == null ? null : lastPassedDataLossMinutes <= rpoMinutes;
+        return lastMeasuredDataLossMinutes == null ? null : lastMeasuredDataLossMinutes <= rpoMinutes;
     }
 
     // --- Internal helpers ---
@@ -244,8 +246,9 @@ public class RecoveryPlan {
     public Instant getLastExerciseAt() { return lastExerciseAt; }
     public Outcome getLastOutcome() { return lastOutcome; }
     public Instant getLastPassedAt() { return lastPassedAt; }
-    public Integer getLastPassedMinutes() { return lastPassedMinutes; }
-    public Integer getLastPassedDataLossMinutes() { return lastPassedDataLossMinutes; }
+    public Instant getLastMeasuredAt() { return lastMeasuredAt; }
+    public Integer getLastMeasuredMinutes() { return lastMeasuredMinutes; }
+    public Integer getLastMeasuredDataLossMinutes() { return lastMeasuredDataLossMinutes; }
     public List<PlanAuditEntry> getAuditTrail() { return Collections.unmodifiableList(auditTrail); }
 
     // --- Nested Value Objects ---
@@ -260,6 +263,6 @@ public class RecoveryPlan {
 
     public record PlanAuditEntry(Instant occurredAt, String action, String executor, PlanStatus fromStatus, PlanStatus toStatus, String detail) {}
 
-    /** The judgment of one moment: nothing of it is stored. {@code nextExerciseDueAt} is null for a paused plan; {@code rtoMet} and {@code rpoMet} are null until an exercise passed (and reported its data loss, for the second). */
+    /** The judgment of one moment: nothing of it is stored. {@code nextExerciseDueAt} is null for a paused plan; {@code rtoMet} and {@code rpoMet} are null until a failover or a full recovery passed (and reported its data loss, for the second). */
     public record Assessment(Readiness readiness, Instant nextExerciseDueAt, Boolean rtoMet, Boolean rpoMet) {}
 }

@@ -19,9 +19,11 @@ holds and whether it has been proved lately.
 - **Reporting is idempotent** (ADR-030, ADR-033): the same plan, kind and start is the same exercise. A repeat, or 20 at once, answers the stored
   exercise with 200 (a new one is 201); the reporter may retry as often as it likes.
 - **The promise is judged when read** (ADR-031), never stored: `readiness` is `READY`, `NEVER_TESTED` (still inside the first interval),
-  `TEST_OVERDUE`, `OBJECTIVE_MISSED` (the last pass was slower than the recovery time, or lost more than the recovery point), `LAST_EXERCISE_FAILED`
-  (the latest exercise was partial or failed) or `PAUSED` (not judged). `rtoMet` and `rpoMet` compare the last pass with the objectives and are
-  `null` until there is one (and `rpoMet` until it reported its data loss). A later pass clears an earlier failure.
+  `TEST_OVERDUE`, `OBJECTIVE_MISSED` (the last measured pass was slower than the recovery time, or lost more than the recovery point), `LAST_EXERCISE_FAILED`
+  (the latest exercise was partial or failed) or `PAUSED` (not judged). `rtoMet` and `rpoMet` compare the last **measured** pass with the objectives and
+  are `null` until there is one (and `rpoMet` until it reported its data loss). Only a `FAILOVER` or a `FULL_RECOVERY` measures: a `TABLETOP` (a walk
+  through the runbook) counts as a pass for the schedule but takes as long as the meeting did, so it says nothing about the recovery time. A later pass
+  clears an earlier failure.
 - **A plan cannot promise what its strategy cannot do** (ADR-031): a plan that restores from a backup (`BACKUP_RESTORE`) cannot promise a recovery
   point of zero; `PILOT_LIGHT`, `WARM_STANDBY` and `ACTIVE_ACTIVE` can.
 - **Staff only** (ADR-032): every route refuses a `REQUESTER` with 403 `ERR-DRR-00403`; another tenant's plan or exercise answers 404.

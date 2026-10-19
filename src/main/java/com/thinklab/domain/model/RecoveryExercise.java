@@ -101,6 +101,11 @@ public class RecoveryExercise {
         return outcome == Outcome.SUCCEEDED;
     }
 
+    /** Does this kind of exercise measure a recovery? A walk through the runbook on paper takes as long as the meeting did, which says nothing about the recovery time. */
+    public boolean measured() {
+        return kind != ExerciseKind.TABLETOP;
+    }
+
     public UUID getId() { return id; }
     public UUID getOrganisationId() { return organisationId; }
     public UUID getPlanId() { return planId; }
