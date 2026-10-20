@@ -233,6 +233,32 @@ public class RecoveryPlan {
 
     public UUID getId() { return id; }
     public UUID getOrganisationId() { return organisationId; }
+    /**
+     * Whether the plan's promise is being kept at {@code now} (platform ADR-001): broken when the latest exercise failed ({@code DR_EXERCISE_FAILED}), the last
+     * measured pass missed an objective ({@code DR_OBJECTIVE_MISSED}) or the next exercise is overdue ({@code DR_TEST_OVERDUE}); kept when ready; not judged when never
+     * exercised yet (still inside its first interval) or paused.
+     */
+    public Promise promise(Instant now) {
+        return switch (assess(now).readiness()) {
+            case LAST_EXERCISE_FAILED -> Promise.broken("DR_EXERCISE_FAILED");
+            case OBJECTIVE_MISSED -> Promise.broken("DR_OBJECTIVE_MISSED");
+            case TEST_OVERDUE -> Promise.broken("DR_TEST_OVERDUE");
+            case READY -> Promise.kept();
+            case NEVER_TESTED, PAUSED -> Promise.notJudged();
+        };
+    }
+
+    /** The last moment the plan or the facts it is judged on changed: an update, an exercise, a pass. */
+    public Instant changedAt() {
+        Instant latest = updatedAt;
+        for (Instant moment : new Instant[]{lastExerciseAt, lastPassedAt}) {
+            if (moment != null && moment.isAfter(latest)) {
+                latest = moment;
+            }
+        }
+        return latest;
+    }
+
     public String getName() { return name; }
     public UUID getAssetId() { return assetId; }
     public Strategy getStrategy() { return strategy; }

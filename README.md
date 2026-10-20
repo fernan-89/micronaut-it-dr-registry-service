@@ -42,6 +42,7 @@ optional and, with platform security on, comes from the verified token.
 |---|---|
 | initiate | `POST /it-dr-registry/v1/initiate` `{"name":"Orders failover","assetId":"<uuid>","strategy":"WARM_STANDBY","rtoMinutes":120,"rpoMinutes":30,"testEveryDays":90,"runbookRef":"KB-1042"}` (`runbookRef` is optional; `strategy`: `BACKUP_RESTORE`, `PILOT_LIGHT`, `WARM_STANDBY`, `ACTIVE_ACTIVE`) |
 | retrieve | `GET /it-dr-registry/v1/{id}/retrieve` (judged now) |
+| promises/retrieve | `GET /it-dr-registry/v1/promises/retrieve?changedWithinDays=&limit=` (the promises contract, ADR-034: every broken promise and every one that changed lately, each with `verdict`, a fixed `code` when broken, `status` and `changedAt`) |
 | retrieve (collection) | `GET /it-dr-registry/v1/retrieve?status=&assetId=&readiness=` (oldest first) |
 | update | `PUT /it-dr-registry/v1/{id}/update` (the whole definition again, in any status) |
 | control/pause | `PUT /it-dr-registry/v1/{id}/control/pause` (ACTIVE -> PAUSED: no longer judged) |
@@ -82,7 +83,7 @@ Do not put personal data in a plan name: it is stored with the plan.
 ## Architecture decisions
 
 001 hexagonal architecture · 005 UUID identity sovereignty and audit tracing · 013 BIAN conventions · 019 HTTP 409 for state conflicts ·
-030 an exercise is a fact reported by whoever ran it · 031 the promise is judged when read · 032 staff only · 033 guarded writes and unique backstops.
+030 an exercise is a fact reported by whoever ran it · 031 the promise is judged when read · 032 staff only · 033 guarded writes and unique backstops · 034 the promises contract.
 
 ## License
 
