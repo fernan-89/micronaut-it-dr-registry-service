@@ -15,6 +15,8 @@ import com.thinklab.application.usecase.RetrieveRecoveryPlanAuditLogUseCase;
 import com.thinklab.application.usecase.RetrieveRecoveryPlanUseCase;
 import com.thinklab.application.usecase.RetrieveRecoveryExerciseUseCase;
 import com.thinklab.application.usecase.RetrieveRecoveryExercisesUseCase;
+import com.thinklab.application.usecase.RetrievePromisesUseCase;
+import com.thinklab.application.dto.response.PromiseResponse;
 import com.thinklab.application.usecase.UpdateRecoveryPlanUseCase;
 import com.thinklab.domain.model.RecoveryPlan.PlanStatus;
 import com.thinklab.domain.model.RecoveryPlan.Readiness;
@@ -59,9 +61,10 @@ class DrRegistryControllerTest {
     @Mock private ReportRecoveryExerciseUseCase reportExercise;
     @Mock private RetrieveRecoveryExerciseUseCase retrieveExercise;
     @Mock private RetrieveRecoveryExercisesUseCase retrieveExercises;
+    @Mock private RetrievePromisesUseCase retrievePromises;
 
     private DrRegistryController controller() {
-        return new DrRegistryController(initiatePlan, retrievePlan, retrievePlans, updatePlan, controlPlan, planAuditLog, reportExercise, retrieveExercise, retrieveExercises);
+        return new DrRegistryController(initiatePlan, retrievePlan, retrievePlans, updatePlan, controlPlan, planAuditLog, reportExercise, retrieveExercise, retrieveExercises, retrievePromises);
     }
 
     private RecoveryPlanResponse planResponse() {
@@ -132,5 +135,13 @@ class DrRegistryControllerTest {
 
         StepVerifier.create(controller().retrieveExercise(id, tenantHeader, ROLE)).assertNext(response -> assertEquals(HttpStatus.OK, response.getStatus())).verifyComplete();
         StepVerifier.create(controller().retrieveExercises(tenantHeader, ROLE, planId, ExerciseKind.FAILOVER, Outcome.FAILED, 10)).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("the promises route passes the tenant, the role and the two parameters (platform ADR-001)")
+    void promises() {
+        when(retrievePromises.execute(tenant, 7, 50, ROLE)).thenReturn(Mono.just(List.of(new PromiseResponse(UUID.randomUUID(), "P", null, "KEPT", null, "ACTIVE", now))));
+
+        StepVerifier.create(controller().promises(tenantHeader, ROLE, 7, 50)).assertNext(promises -> assertEquals(1, promises.size())).verifyComplete();
     }
 }

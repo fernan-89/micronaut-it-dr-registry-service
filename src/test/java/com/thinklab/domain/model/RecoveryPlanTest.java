@@ -347,4 +347,42 @@ class RecoveryPlanTest {
         Assessment judged = summarised(PlanStatus.ACTIVE, Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(60)), 500, null).assess(NOW);
         assertEquals(Readiness.OBJECTIVE_MISSED, judged.readiness());
     }
+
+    @Test
+    @DisplayName("the promise is broken with a fixed code when the last exercise failed, an objective was missed or a test is overdue; kept when ready; not judged when never tested yet or paused (platform ADR-001)")
+    void promise() {
+        RecoveryPlan ready = summarised(PlanStatus.ACTIVE, Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(1)), 60, 10);
+        RecoveryPlan failed = summarised(PlanStatus.ACTIVE, Outcome.FAILED, NOW.minus(Duration.ofDays(5)), null, null);
+        RecoveryPlan missed = summarised(PlanStatus.ACTIVE, Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(1)), 500, 10);
+        RecoveryPlan overdue = summarised(PlanStatus.ACTIVE, Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(60)), 60, 10);
+        RecoveryPlan paused = summarised(PlanStatus.PAUSED, Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(1)), 60, 10);
+        RecoveryPlan never = RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, PlanStatus.ACTIVE, NOW.minus(Duration.ofDays(5)),
+                NOW.minus(Duration.ofDays(5)), null, null, null, null, null, null, List.of());
+
+        assertEquals(Promise.kept(), ready.promise(NOW));
+        assertEquals(Promise.broken("DR_EXERCISE_FAILED"), failed.promise(NOW));
+        assertEquals(Promise.broken("DR_OBJECTIVE_MISSED"), missed.promise(NOW));
+        assertEquals(Promise.broken("DR_TEST_OVERDUE"), overdue.promise(NOW));
+        assertEquals(Promise.notJudged(), paused.promise(NOW));
+        assertEquals(Promise.notJudged(), never.promise(NOW));
+        assertEquals(Promise.Verdict.BROKEN, Promise.broken("X").verdict());
+        assertEquals("X", Promise.broken("X").code());
+    }
+
+    @Test
+    @DisplayName("a plan changed when it was updated or when it was last exercised or passed, whichever is latest")
+    void changedAt() {
+        Instant created = NOW.minus(Duration.ofDays(100));
+        RecoveryPlan none = RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, PlanStatus.ACTIVE, created, created, null, null, null, null, null, null, List.of());
+        RecoveryPlan exercised = summarised(PlanStatus.ACTIVE, Outcome.FAILED, NOW.minus(Duration.ofDays(9)), null, null);
+        RecoveryPlan passedLater = RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, PlanStatus.ACTIVE, created, created,
+                NOW.minus(Duration.ofDays(3)), Outcome.SUCCEEDED, NOW.minus(Duration.ofHours(2)), null, null, null, List.of());
+        RecoveryPlan updatedLater = RecoveryPlan.reconstitute(UUID.randomUUID(), org, "P", asset, Strategy.WARM_STANDBY, 120, 30, 30, null, PlanStatus.ACTIVE, created, NOW.minus(Duration.ofMinutes(5)),
+                NOW.minus(Duration.ofDays(3)), Outcome.SUCCEEDED, NOW.minus(Duration.ofDays(3)), null, null, null, List.of());
+
+        assertEquals(created, none.changedAt());
+        assertEquals(NOW.minus(Duration.ofDays(1)), exercised.changedAt());
+        assertEquals(NOW.minus(Duration.ofHours(2)), passedLater.changedAt());
+        assertEquals(NOW.minus(Duration.ofMinutes(5)), updatedLater.changedAt());
+    }
 }

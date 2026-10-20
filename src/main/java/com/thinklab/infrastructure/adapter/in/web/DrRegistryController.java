@@ -3,9 +3,11 @@ package com.thinklab.infrastructure.adapter.in.web;
 import com.thinklab.application.dto.request.InitiateRecoveryPlanRequest;
 import com.thinklab.application.dto.request.ReportRecoveryExerciseRequest;
 import com.thinklab.application.dto.request.UpdateRecoveryPlanRequest;
+import com.thinklab.application.dto.response.PromiseResponse;
 import com.thinklab.application.dto.response.AuditEntryResponse;
 import com.thinklab.application.dto.response.RecoveryPlanResponse;
 import com.thinklab.application.dto.response.RecoveryExerciseResponse;
+import com.thinklab.application.usecase.RetrievePromisesUseCase;
 import com.thinklab.application.usecase.ControlRecoveryPlanUseCase;
 import com.thinklab.application.usecase.InitiateRecoveryPlanUseCase;
 import com.thinklab.application.usecase.ReportRecoveryExerciseUseCase;
@@ -67,9 +69,13 @@ public class DrRegistryController {
     private final RetrieveRecoveryExerciseUseCase retrieveExercise;
     private final RetrieveRecoveryExercisesUseCase retrieveExercises;
 
+    private final RetrievePromisesUseCase retrievePromises;
+
     public DrRegistryController(InitiateRecoveryPlanUseCase initiatePlan, RetrieveRecoveryPlanUseCase retrievePlan, RetrieveRecoveryPlansUseCase retrievePlans,
                                     UpdateRecoveryPlanUseCase updatePlan, ControlRecoveryPlanUseCase controlPlan, RetrieveRecoveryPlanAuditLogUseCase planAuditLog,
-                                    ReportRecoveryExerciseUseCase reportExercise, RetrieveRecoveryExerciseUseCase retrieveExercise, RetrieveRecoveryExercisesUseCase retrieveExercises) {
+                                    ReportRecoveryExerciseUseCase reportExercise, RetrieveRecoveryExerciseUseCase retrieveExercise, RetrieveRecoveryExercisesUseCase retrieveExercises,
+            RetrievePromisesUseCase retrievePromises) {
+        this.retrievePromises = retrievePromises;
         this.initiatePlan = initiatePlan;
         this.retrievePlan = retrievePlan;
         this.retrievePlans = retrievePlans;
@@ -105,6 +111,16 @@ public class DrRegistryController {
     public Mono<List<RecoveryPlanResponse>> retrieveAll(@Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role,
                                                         @QueryValue @Nullable PlanStatus status, @QueryValue @Nullable UUID assetId, @QueryValue @Nullable Readiness readiness) {
         return Mono.defer(() -> retrievePlans.execute(UUID.fromString(tenantId), status, assetId, readiness, role).collectList());
+    }
+
+    /**
+     * Behavior Qualifier: {@code promises/retrieve} (platform ADR-001, the promises contract). Every broken promise and every one that changed within the days asked
+     * (30 unless asked, 1 to 365), at most {@code limit} of each (500 unless asked, at most 1000).
+     */
+    @Get("/promises/retrieve")
+    public Mono<List<PromiseResponse>> promises(@Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role,
+                                                @QueryValue @Nullable Integer changedWithinDays, @QueryValue @Nullable Integer limit) {
+        return Mono.defer(() -> retrievePromises.execute(UUID.fromString(tenantId), changedWithinDays, limit, role));
     }
 
     /** Behavior Qualifier: {@code update}. The whole definition again. */
